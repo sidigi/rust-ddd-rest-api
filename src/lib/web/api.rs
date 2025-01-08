@@ -1,7 +1,11 @@
 use std::str::FromStr;
-use rocket::Responder;
+use rocket::request::{FromRequest, Outcome};
+use rocket::{Request, Responder, State};
+use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde::Serialize;
+use crate::data::AppDatabase;
+use crate::service::action;
 use crate::ServiceError;
 
 pub const API_KEY_HEADER: &str = "x-api-key";
@@ -69,4 +73,50 @@ impl From<ServiceError> for ApiError {
         }
     }
 
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for ApiKey  {
+    type Error = ApiError;
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        fn server_error() -> Outcome<ApiKey, ApiError> {
+            Outcome::Error((
+                Status::InternalServerError,
+                ApiError::ServerError(Json("a server error occurred".to_owned()))
+            ))
+        }
+
+        fn key_error(e: ApiKeyError) -> Outcome<ApiKey, ApiError> {
+            Outcome::Error((
+                Status::BadRequest,
+                ApiError::KeyError(Json(e))
+            ))
+        }
+        
+        match req.headers().get_one(API_KEY_HEADER) {
+            None => key_error(ApiKeyError::NotFound("API key not found".to_string())),
+            Some(key) => {
+                let db = match req.guard::<&State<AppDatabase>>().await {
+                    Outcome::Success(db) => db,
+                    _ => return server_error(),
+                };
+
+                let api_key = match ApiKey::from_str(key) {
+                    Ok(key) => key,
+                    Err(e) => return key_error(e),
+                };
+                
+                match action::api_key_is_valid(api_key.clone(), db.get_pool()).await {
+                    Ok(valid) if valid => {
+                        Outcome::Success(api_key)
+                    }
+                    Ok(valid) if !valid => {
+                        key_error(ApiKeyError::NotFound("API key not found".to_string()))
+                    }
+                    _ => server_error(),
+                }
+            }
+        }
+    }
 }
