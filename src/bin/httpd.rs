@@ -3,6 +3,7 @@ use clipstash::web::{renderer::Renderer, hitcounter::HitCounter};
 use dotenv::dotenv;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use clipstash::domain::maintenance::Maintenance;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "httpd")]
@@ -28,11 +29,13 @@ fn main() {
     });
 
     let hit_counter = HitCounter::new(database.get_pool().clone(), handle.clone());
+    let maintenance = Maintenance::spawn(database.get_pool().clone(), handle.clone());
 
     let config = clipstash::RocketConfig {
         renderer,
         database,
         hit_counter,
+        maintenance
     };
 
     rt.block_on(async move{

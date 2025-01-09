@@ -197,3 +197,25 @@ pub mod catcher {
         catchers![default, internal_error, not_found]
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use crate::data::AppDatabase;
+    use crate::test::async_runtime;
+    use crate::web::test::client;
+    use rocket::http::Status;
+
+    #[test]
+    fn gets_home() {
+        let client = client();
+        let response = client.get("/").dispatch();
+        assert_eq!(response.status(), Status::Ok);
+    }
+
+    #[test]
+    fn error_on_missing_clip() {
+        let client = client();
+        let response = client.get("/clip/sdfa").dispatch();
+        assert_eq!(response.status(), Status::NotFound);
+    }
+}
